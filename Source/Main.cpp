@@ -94,6 +94,8 @@ int main()
     if (window == NULL) return endProgram("Prozor nije uspeo da se kreira.");
     glfwMakeContextCurrent(window);
 
+    glfwSetCursor(window, loadImageToCursor("../Resources/bus_stop.png"));
+
     if (glewInit() != GLEW_OK) return endProgram("GLEW nije uspeo da se inicijalizuje.");
 
     glEnable(GL_BLEND);
