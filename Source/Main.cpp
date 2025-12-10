@@ -279,7 +279,15 @@ void drawBus(unsigned int shader, unsigned int vao) {
     const double stopDuration = 10.0;
 
     if (distanceTraveled == 0.0f) {
-        if (stopStartTime == 0.0) stopStartTime = glfwGetTime();
+        if (stopStartTime == 0.0) {
+            if (isControlInside) {
+                numberOfTickets += rand() % numberOfPassengers;
+                numberOfPassengers--;
+                isControlInside = false;
+            }
+
+            stopStartTime = glfwGetTime();
+        }
         double elapsed = glfwGetTime() - stopStartTime;
         if (elapsed < stopDuration) {
             busStopped = true;
@@ -325,6 +333,12 @@ void drawBus(unsigned int shader, unsigned int vao) {
     }
 
     if (distanceTraveled >= totalLength) {
+        if (isControlInside) {
+            numberOfTickets += rand() % numberOfPassengers;
+            numberOfPassengers--;
+            isControlInside = false;
+        }
+
         distanceTraveled = 0.0f;
         currentStation = nextStation;
         nextStation = (nextStation + 1) % 10;
@@ -459,8 +473,11 @@ void passengersEnterOrLeave(GLFWwindow* window, int button, int action, int mods
     }
 }
 
-void controlEntered() {
-
+void controlEntered(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    if (!isControlInside && busStopped && key == GLFW_KEY_K && action == GLFW_PRESS && numberOfPassengers < 50) {
+        isControlInside = true;
+        numberOfPassengers++;
+    }
 }
 
 void drawControl(unsigned int shader, unsigned int vao) {
@@ -473,6 +490,7 @@ void drawControl(unsigned int shader, unsigned int vao) {
 
 int main()
 {
+    srand(time(NULL));
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -486,6 +504,7 @@ int main()
     if (window == NULL) return endProgram("Prozor nije uspeo da se kreira.");
     glfwMakeContextCurrent(window);
     glfwSetMouseButtonCallback(window, passengersEnterOrLeave);
+    glfwSetKeyCallback(window, controlEntered);
 
     glfwSetCursor(window, loadImageToCursor("../Resources/bus_stop.png"));
 
@@ -597,7 +616,7 @@ int main()
         drawDoors(simpleTextureShader, VAOdoors);
         drawTextInTopRight(mode);
 
-        if (controlEntered) {
+        if (isControlInside) {
             drawControl(simpleTextureShader, VAOControl);
         }
 
