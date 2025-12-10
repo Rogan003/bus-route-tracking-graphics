@@ -18,5 +18,7 @@ The cursor should look like a yellow diamond-shaped traffic sign (like a BUS STO
 
 ## How to run
 I used CLion on my MacBook to run all this.
-First you need to install GLEW and GLFW using brew.
+First you need to install GLEW, GLFW3 and FreeType using brew (`brew install glew glfw3 freetype`).
 Then you need to build and run project (it will load executable files and dependencies in CMakeLists.txt).
+
+It is probably possible to run it on Windows too, but you will need to install GLEW, GLFW3 and FreeType, and change paths to them in CMakeLists.txt.

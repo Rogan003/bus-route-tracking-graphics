@@ -148,7 +148,7 @@ void initFreeType(const char* fontPath) {
     FT_Set_Pixel_Sizes(face, 0, 48);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-    for (unsigned char c = '0'; c <= '9'; c++) {
+    for (unsigned char c = 32; c < 128; c++) {
         if (FT_Load_Char(face, c, FT_LOAD_RENDER)) {
             fprintf(stderr, "ERROR::FREETYPE: Failed to load Glyph\n");
             continue;
@@ -202,6 +202,7 @@ void initFreeType(const char* fontPath) {
 void renderText(unsigned int shader, std::string text, float x, float y, float scale, float r, float g, float b, float screenWidth, float screenHeight) {
     glUseProgram(shader);
     glUniform3f(glGetUniformLocation(shader, "textColor"), r, g, b);
+    glUniform1i(glGetUniformLocation(shader, "text"), 0);
     glActiveTexture(GL_TEXTURE0);
     glBindVertexArray(textVAO);
 
@@ -251,7 +252,6 @@ void drawStations(unsigned int shader, unsigned int vao, const GLFWvidmode* mode
     for (int i = 0; i < 10; i++) {
         char numStr[2];
         snprintf(numStr, sizeof(numStr), "%d", i);
-        // Center the text by offsetting based on character size
         Character ch = Characters[numStr[0]];
         float scale = 1.5f;
         float textWidth = ch.SizeX * scale / mode->width * 2.0f;
@@ -270,16 +270,15 @@ void drawBus(unsigned int shader, unsigned int vao, bool &busStopped) {
 
     const float speed = 0.15f;
     const int segments = 100;
-    const double stopDuration = 10.0; // 10 seconds
+    const double stopDuration = 10.0;
 
-    // Determine if bus is stopped
     if (distanceTraveled == 0.0f) {
         if (stopStartTime == 0.0) stopStartTime = glfwGetTime();
         double elapsed = glfwGetTime() - stopStartTime;
         if (elapsed < stopDuration) {
-            busStopped = true; // Bus stays stopped
+            busStopped = true;
         } else {
-            stopStartTime = 0.0; // Reset timer
+            stopStartTime = 0.0;
             busStopped = false;
         }
     } else {
@@ -290,7 +289,6 @@ void drawBus(unsigned int shader, unsigned int vao, bool &busStopped) {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, busTex);
 
-    // Control curve center
     float cx = (stations[currentStation].x + stations[nextStation].x) / 2.0f;
     float cy = (stations[currentStation].y + stations[nextStation].y) / 2.0f;
 
@@ -303,7 +301,6 @@ void drawBus(unsigned int shader, unsigned int vao, bool &busStopped) {
         cy += dx / length * offset;
     }
 
-    // Compute total length of the Bezier segment
     float totalLength = 0.0f;
     float lastX = stations[currentStation].x;
     float lastY = stations[currentStation].y;
@@ -317,12 +314,10 @@ void drawBus(unsigned int shader, unsigned int vao, bool &busStopped) {
         lastY = y;
     }
 
-    // Move bus only if not stopped
     if (!busStopped) {
         distanceTraveled += speed / 75.0f;
     }
 
-    // If finished segment, move to next station
     if (distanceTraveled >= totalLength) {
         distanceTraveled = 0.0f;
         currentStation = nextStation;
@@ -331,7 +326,6 @@ void drawBus(unsigned int shader, unsigned int vao, bool &busStopped) {
         stopStartTime = glfwGetTime();
     }
 
-    // Find bus position along the curve
     float traveled = 0.0f;
     float busX = stations[currentStation].x;
     float busY = stations[currentStation].y;
@@ -415,6 +409,24 @@ void drawDoors(unsigned int shader, unsigned int vao, bool busStopped) {
     glBindTexture(GL_TEXTURE_2D, busStopped ? doorsOpenTex : doorsClosedTex);
     glBindVertexArray(vao);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+}
+
+void drawPassengerCount(int passengers, const GLFWvidmode* mode) {
+    char text[64];
+    snprintf(text, sizeof(text), "Number of passengers inside: %d", passengers);
+
+    float scale = 1.0f;
+
+    float textWidth = 0.0f;
+    for (char c : std::string(text)) {
+        Character ch = Characters[c];
+        textWidth += (ch.Advance >> 6) * scale / mode->width * 2.0f;
+    }
+
+    float x = 1.0f - 20.0f / mode->width * 2.0f - textWidth;
+    float y = 1.0f - 60.0f / mode->height * 2.0f;
+
+    renderText(textShader, text, x, y, scale, 0.9f, 0.9f, 0.9f, mode->width, mode->height);
 }
 
 int main()
@@ -516,6 +528,7 @@ int main()
     glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
 
     bool busStopped = false;
+    int numberOfPassengers = 0;
 
     while (!glfwWindowShouldClose(window))
     {
@@ -531,6 +544,7 @@ int main()
         drawBusPaths(pathShader);
         drawBus(busShader, VAOBus, busStopped);
         drawDoors(simpleTextureShader, VAOdoors, busStopped);
+        drawPassengerCount(numberOfPassengers, mode);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
