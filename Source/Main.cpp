@@ -1,9 +1,21 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include <map>
 
 #include "../Header/Util.h"
 
 #define NUM_SLICES 40
+
+struct Character {
+    unsigned int TextureID;
+    int SizeX, SizeY;
+    int BearingX, BearingY;
+    unsigned int Advance;
+};
+
+std::map<char, Character> Characters;
 
 // Main fajl funkcija sa osnovnim komponentama OpenGL programa
 
@@ -114,9 +126,115 @@ void initializeStations() {
     stations[9].x = -0.45f; stations[9].y = 0.25f; stations[9].number = 9;
 }
 
-unsigned stationNumberTextures[10];
+unsigned int textVAO, textVBO;
+unsigned int textShader;
 
-void drawStations(unsigned int shader, unsigned int vao) {
+void initFreeType(const char* fontPath) {
+    FT_Library ft;
+    if (FT_Init_FreeType(&ft)) {
+        fprintf(stderr, "ERROR::FREETYPE: Could not init FreeType Library\n");
+        return;
+    }
+
+    FT_Face face;
+    if (FT_New_Face(ft, fontPath, 0, &face)) {
+        fprintf(stderr, "ERROR::FREETYPE: Failed to load font\n");
+        return;
+    }
+
+    FT_Set_Pixel_Sizes(face, 0, 48);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    for (unsigned char c = '0'; c <= '9'; c++) {
+        if (FT_Load_Char(face, c, FT_LOAD_RENDER)) {
+            fprintf(stderr, "ERROR::FREETYPE: Failed to load Glyph\n");
+            continue;
+        }
+
+        unsigned int texture;
+        glGenTextures(1, &texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RED,
+            face->glyph->bitmap.width,
+            face->glyph->bitmap.rows,
+            0,
+            GL_RED,
+            GL_UNSIGNED_BYTE,
+            face->glyph->bitmap.buffer
+        );
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        Character character = {
+            texture,
+            (int)face->glyph->bitmap.width,
+            (int)face->glyph->bitmap.rows,
+            face->glyph->bitmap_left,
+            face->glyph->bitmap_top,
+            (unsigned int)face->glyph->advance.x
+        };
+        Characters[c] = character;
+    }
+
+    FT_Done_Face(face);
+    FT_Done_FreeType(ft);
+
+    glGenVertexArrays(1, &textVAO);
+    glGenBuffers(1, &textVBO);
+    glBindVertexArray(textVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, textVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6 * 4, NULL, GL_DYNAMIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+}
+
+void renderText(unsigned int shader, std::string text, float x, float y, float scale, float r, float g, float b, float screenWidth, float screenHeight) {
+    glUseProgram(shader);
+    glUniform3f(glGetUniformLocation(shader, "textColor"), r, g, b);
+    glActiveTexture(GL_TEXTURE0);
+    glBindVertexArray(textVAO);
+
+    float startX = x;
+    for (char c : text) {
+        Character ch = Characters[c];
+
+        float xpos = startX + ch.BearingX * scale / screenWidth * 2.0f;
+        float ypos = y - (ch.SizeY - ch.BearingY) * scale / screenHeight * 2.0f;
+
+        float w = ch.SizeX * scale / screenWidth * 2.0f;
+        float h = ch.SizeY * scale / screenHeight * 2.0f;
+
+        float vertices[6][4] = {
+            { xpos,     ypos + h,   0.0f, 0.0f },
+            { xpos,     ypos,       0.0f, 1.0f },
+            { xpos + w, ypos,       1.0f, 1.0f },
+
+            { xpos,     ypos + h,   0.0f, 0.0f },
+            { xpos + w, ypos,       1.0f, 1.0f },
+            { xpos + w, ypos + h,   1.0f, 0.0f }
+        };
+
+        glBindTexture(GL_TEXTURE_2D, ch.TextureID);
+        glBindBuffer(GL_ARRAY_BUFFER, textVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+
+        startX += (ch.Advance >> 6) * scale / screenWidth * 2.0f;
+    }
+    glBindVertexArray(0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void drawStations(unsigned int shader, unsigned int vao, const GLFWvidmode* mode) {
     glUseProgram(shader);
 
     GLint loc = glGetUniformLocation(shader, "uOffset");
@@ -125,6 +243,19 @@ void drawStations(unsigned int shader, unsigned int vao) {
         glUniform2f(loc, stations[i].x, stations[i].y);
         glBindVertexArray(vao);
         glDrawArrays(GL_TRIANGLE_FAN, 0, NUM_SLICES + 2);
+    }
+
+    for (int i = 0; i < 10; i++) {
+        char numStr[2];
+        snprintf(numStr, sizeof(numStr), "%d", i);
+        // Center the text by offsetting based on character size
+        Character ch = Characters[numStr[0]];
+        float scale = 1.5f;
+        float textWidth = ch.SizeX * scale / mode->width * 2.0f;
+        float textHeight = ch.SizeY * scale / mode->height * 2.0f;
+        float offsetX = textWidth * 0.5f + ch.BearingX * scale / mode->width * 2.0f;
+        float offsetY = textHeight * 0.5f - (ch.SizeY - ch.BearingY) * scale / mode->height * 2.0f;
+        renderText(textShader, numStr, stations[i].x - offsetX, stations[i].y - offsetY, scale, 0.9f, 0.9f, 0.9f, mode->width, mode->height);
     }
 }
 
@@ -159,6 +290,9 @@ int main()
     unsigned int stationShader = createShader("../Shaders/station.vert", "../Shaders/station.frag");
     glUseProgram(stationShader);
 
+    textShader = createShader("../Shaders/text.vert", "../Shaders/text.frag");
+    initFreeType("../Resources/font.ttf");
+
     float verticesSignature[] = {
         0.5f, -0.7f, 0.0f, 1.0f, // gornje levo teme
         0.5f, -1.0f, 0.0f, 0.0f, // donje levo teme
@@ -172,7 +306,7 @@ int main()
     initializeStations();
     float verticesStation[(NUM_SLICES + 2) * 2];
 
-    float xc = 0.0f, yc = 0.0f, r = 0.12f;
+    float xc = 0.0f, yc = 0.0f, r = 0.1f;
     float aspect = (float)mode->width / (float)mode->height;
 
     verticesStation[0] = xc;
@@ -201,7 +335,7 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT);
 
         drawSignature(signatureShader, VAOsignature);
-        drawStations(stationShader, VAOstations);
+        drawStations(stationShader, VAOstations, mode);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
