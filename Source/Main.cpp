@@ -24,8 +24,9 @@ std::map<char, Character> Characters;
 // Srećan rad!
 
 unsigned signatureTex;
+unsigned busTex;
 
-unsigned int VBOsignature;
+unsigned int VBO;
 
 void preprocessTexture(unsigned& texture, const char* filepath) {
     texture = loadImageToTexture(filepath); // Učitavanje teksture
@@ -70,10 +71,10 @@ void formVAOTexture(float* vertices, size_t size, unsigned int& vao) {
     // Četvorougao
 
     glGenVertexArrays(1, &vao);
-    glGenBuffers(1, &VBOsignature);
+    glGenBuffers(1, &VBO);
 
     glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, VBOsignature);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, size, vertices, GL_STATIC_DRAW);
 
     // Atribut 0 (pozicija):
@@ -87,10 +88,10 @@ void formVAOTexture(float* vertices, size_t size, unsigned int& vao) {
 
 void formVAOPositionOnly(float* vertices, size_t size, unsigned int& vao) {
     glGenVertexArrays(1, &vao);
-    glGenBuffers(1, &VBOsignature);
+    glGenBuffers(1, &VBO);
 
     glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, VBOsignature);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, size, vertices, GL_STATIC_DRAW);
 
     // Atribut 0 (pozicija):
@@ -259,6 +260,18 @@ void drawStations(unsigned int shader, unsigned int vao, const GLFWvidmode* mode
     }
 }
 
+void drawBus(unsigned int shader, unsigned int vao) {
+    glUseProgram(shader);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, busTex);
+
+    GLint loc = glGetUniformLocation(shader, "uOffset");
+    glUniform2f(loc, stations[0].x, stations[0].y);
+
+    glBindVertexArray(vao);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+}
+
 int main()
 {
     glfwInit();
@@ -287,6 +300,12 @@ int main()
     glUseProgram(signatureShader);
     glUniform1i(glGetUniformLocation(signatureShader, "signatureTex"), 0);
 
+    preprocessTexture(busTex, "../Resources/bus.png");
+
+    unsigned int busShader = createShader("../Shaders/bus.vert", "../Shaders/bus.frag");
+    glUseProgram(busShader);
+    glUniform1i(glGetUniformLocation(busShader, "busTex"), 0);
+
     unsigned int stationShader = createShader("../Shaders/station.vert", "../Shaders/station.frag");
     glUseProgram(stationShader);
 
@@ -302,6 +321,16 @@ int main()
 
     unsigned int VAOsignature;
     formVAOTexture(verticesSignature, sizeof(verticesSignature), VAOsignature);
+
+    float verticesBus[] = {
+        -0.06f, 0.1f, 0.0f, 1.0f, // gornje levo teme
+        -0.06f, -0.1f, 0.0f, 0.0f, // donje levo teme
+        0.06f, -0.1f, 1.0f, 0.0f, // donje desno teme
+        0.06f, 0.1f, 1.0f, 1.0f, // gornje desno teme
+   };
+
+    unsigned int VAOBus;
+    formVAOTexture(verticesBus, sizeof(verticesBus), VAOBus);
 
     initializeStations();
     float verticesStation[(NUM_SLICES + 2) * 2];
@@ -336,6 +365,7 @@ int main()
 
         drawSignature(signatureShader, VAOsignature);
         drawStations(stationShader, VAOstations, mode);
+        drawBus(busShader, VAOBus);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
