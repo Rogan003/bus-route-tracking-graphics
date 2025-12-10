@@ -263,28 +263,26 @@ void drawStations(unsigned int shader, unsigned int vao, const GLFWvidmode* mode
 void drawBus(unsigned int shader, unsigned int vao) {
     static int currentStation = 0;
     static int nextStation = 1;
-    static float distanceTraveled = 0.0f; // distance along curve
-    const float speed = 0.15f; // slower speed, units per second
-    const int segments = 100; // number of samples for curve length approximation
+    static float distanceTraveled = 0.0f;
+    const float speed = 0.15f;
+    const int segments = 100;
 
     glUseProgram(shader);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, busTex);
 
-    // Control point for bigger curve
     float cx = (stations[currentStation].x + stations[nextStation].x) / 2.0f;
     float cy = (stations[currentStation].y + stations[nextStation].y) / 2.0f;
 
     float dx = stations[nextStation].x - stations[currentStation].x;
     float dy = stations[nextStation].y - stations[currentStation].y;
-    float offset = 0.35f; // bigger curve
+    float offset = 0.35f;
     float length = sqrt(dx*dx + dy*dy);
     if (length > 0.0f) {
         cx += -dy / length * offset;
         cy += dx / length * offset;
     }
 
-    // Approximate Bezier curve length
     float totalLength = 0.0f;
     float lastX = stations[currentStation].x;
     float lastY = stations[currentStation].y;
@@ -298,15 +296,13 @@ void drawBus(unsigned int shader, unsigned int vao) {
         lastY = y;
     }
 
-    // Move along curve with constant speed
-    distanceTraveled += speed / 75.0f; // deltaTime ~1/75
+    distanceTraveled += speed / 75.0f;
     if (distanceTraveled >= totalLength) {
         distanceTraveled = 0.0f;
         currentStation = nextStation;
         nextStation = (nextStation + 1) % 10;
     }
 
-    // Find t corresponding to distanceTraveled along curve
     float traveled = 0.0f;
     float busX = stations[currentStation].x;
     float busY = stations[currentStation].y;
@@ -335,6 +331,53 @@ void drawBus(unsigned int shader, unsigned int vao) {
 
     glBindVertexArray(vao);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+}
+
+void drawBusPaths(unsigned int shader) {
+    glUseProgram(shader);
+
+    const int segments = 50;
+    for (int i = 0; i < 10; i++) {
+        int next = (i + 1) % 10;
+
+        float cx = (stations[i].x + stations[next].x) / 2.0f;
+        float cy = (stations[i].y + stations[next].y) / 2.0f;
+
+        float dx = stations[next].x - stations[i].x;
+        float dy = stations[next].y - stations[i].y;
+        float offset = 0.35f;
+        float length = sqrt(dx*dx + dy*dy);
+        if (length > 0.0f) {
+            cx += -dy / length * offset;
+            cy += dx / length * offset;
+        }
+
+        std::vector<float> vertices;
+        for (int j = 0; j <= segments; j++) {
+            float t = (float)j / segments;
+            float u = 1.0f - t;
+            float x = u*u*stations[i].x + 2*u*t*cx + t*t*stations[next].x;
+            float y = u*u*stations[i].y + 2*u*t*cy + t*t*stations[next].y;
+            vertices.push_back(x);
+            vertices.push_back(y);
+        }
+
+        unsigned int VAO, VBO;
+        glGenVertexArrays(1, &VAO);
+        glGenBuffers(1, &VBO);
+        glBindVertexArray(VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, VBO);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+
+        glLineWidth(3.0f);
+        glDrawArrays(GL_LINE_STRIP, 0, vertices.size() / 2);
+
+        glDeleteBuffers(1, &VBO);
+        glDeleteVertexArrays(1, &VAO);
+    }
 }
 
 int main()
@@ -376,6 +419,9 @@ int main()
 
     textShader = createShader("../Shaders/text.vert", "../Shaders/text.frag");
     initFreeType("../Resources/font.ttf");
+
+    unsigned int pathShader = createShader("../Shaders/path.vert", "../Shaders/path.frag");
+    glUseProgram(pathShader);
 
     float verticesSignature[] = {
         0.5f, -0.7f, 0.0f, 1.0f, // gornje levo teme
@@ -430,6 +476,7 @@ int main()
 
         drawSignature(signatureShader, VAOsignature);
         drawStations(stationShader, VAOstations, mode);
+        drawBusPaths(pathShader);
         drawBus(busShader, VAOBus);
 
         glfwSwapBuffers(window);
