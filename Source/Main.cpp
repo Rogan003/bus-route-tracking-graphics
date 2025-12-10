@@ -261,12 +261,77 @@ void drawStations(unsigned int shader, unsigned int vao, const GLFWvidmode* mode
 }
 
 void drawBus(unsigned int shader, unsigned int vao) {
+    static int currentStation = 0;
+    static int nextStation = 1;
+    static float distanceTraveled = 0.0f; // distance along curve
+    const float speed = 0.15f; // slower speed, units per second
+    const int segments = 100; // number of samples for curve length approximation
+
     glUseProgram(shader);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, busTex);
 
+    // Control point for bigger curve
+    float cx = (stations[currentStation].x + stations[nextStation].x) / 2.0f;
+    float cy = (stations[currentStation].y + stations[nextStation].y) / 2.0f;
+
+    float dx = stations[nextStation].x - stations[currentStation].x;
+    float dy = stations[nextStation].y - stations[currentStation].y;
+    float offset = 0.35f; // bigger curve
+    float length = sqrt(dx*dx + dy*dy);
+    if (length > 0.0f) {
+        cx += -dy / length * offset;
+        cy += dx / length * offset;
+    }
+
+    // Approximate Bezier curve length
+    float totalLength = 0.0f;
+    float lastX = stations[currentStation].x;
+    float lastY = stations[currentStation].y;
+    for (int i = 1; i <= segments; i++) {
+        float tSeg = (float)i / segments;
+        float u = 1.0f - tSeg;
+        float x = u*u*stations[currentStation].x + 2*u*tSeg*cx + tSeg*tSeg*stations[nextStation].x;
+        float y = u*u*stations[currentStation].y + 2*u*tSeg*cy + tSeg*tSeg*stations[nextStation].y;
+        totalLength += sqrt((x-lastX)*(x-lastX) + (y-lastY)*(y-lastY));
+        lastX = x;
+        lastY = y;
+    }
+
+    // Move along curve with constant speed
+    distanceTraveled += speed / 75.0f; // deltaTime ~1/75
+    if (distanceTraveled >= totalLength) {
+        distanceTraveled = 0.0f;
+        currentStation = nextStation;
+        nextStation = (nextStation + 1) % 10;
+    }
+
+    // Find t corresponding to distanceTraveled along curve
+    float traveled = 0.0f;
+    float busX = stations[currentStation].x;
+    float busY = stations[currentStation].y;
+    lastX = stations[currentStation].x;
+    lastY = stations[currentStation].y;
+    for (int i = 1; i <= segments; i++) {
+        float tSeg = (float)i / segments;
+        float u = 1.0f - tSeg;
+        float x = u*u*stations[currentStation].x + 2*u*tSeg*cx + tSeg*tSeg*stations[nextStation].x;
+        float y = u*u*stations[currentStation].y + 2*u*tSeg*cy + tSeg*tSeg*stations[nextStation].y;
+        float d = sqrt((x-lastX)*(x-lastX) + (y-lastY)*(y-lastY));
+        if (traveled + d >= distanceTraveled) {
+            float remain = distanceTraveled - traveled;
+            float ratio = remain / d;
+            busX = lastX + (x-lastX) * ratio;
+            busY = lastY + (y-lastY) * ratio;
+            break;
+        }
+        traveled += d;
+        lastX = x;
+        lastY = y;
+    }
+
     GLint loc = glGetUniformLocation(shader, "uOffset");
-    glUniform2f(loc, stations[0].x, stations[0].y);
+    glUniform2f(loc, busX, busY);
 
     glBindVertexArray(vao);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
