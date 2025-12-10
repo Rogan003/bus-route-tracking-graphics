@@ -25,6 +25,8 @@ std::map<char, Character> Characters;
 
 unsigned signatureTex;
 unsigned busTex;
+unsigned doorsOpenTex;
+unsigned doorsClosedTex;
 
 unsigned int VBO;
 
@@ -260,17 +262,35 @@ void drawStations(unsigned int shader, unsigned int vao, const GLFWvidmode* mode
     }
 }
 
-void drawBus(unsigned int shader, unsigned int vao) {
+void drawBus(unsigned int shader, unsigned int vao, bool &busStopped) {
     static int currentStation = 0;
     static int nextStation = 1;
     static float distanceTraveled = 0.0f;
+    static double stopStartTime = 0.0;
+
     const float speed = 0.15f;
     const int segments = 100;
+    const double stopDuration = 10.0; // 10 seconds
+
+    // Determine if bus is stopped
+    if (distanceTraveled == 0.0f) {
+        if (stopStartTime == 0.0) stopStartTime = glfwGetTime();
+        double elapsed = glfwGetTime() - stopStartTime;
+        if (elapsed < stopDuration) {
+            busStopped = true; // Bus stays stopped
+        } else {
+            stopStartTime = 0.0; // Reset timer
+            busStopped = false;
+        }
+    } else {
+        busStopped = false;
+    }
 
     glUseProgram(shader);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, busTex);
 
+    // Control curve center
     float cx = (stations[currentStation].x + stations[nextStation].x) / 2.0f;
     float cy = (stations[currentStation].y + stations[nextStation].y) / 2.0f;
 
@@ -283,6 +303,7 @@ void drawBus(unsigned int shader, unsigned int vao) {
         cy += dx / length * offset;
     }
 
+    // Compute total length of the Bezier segment
     float totalLength = 0.0f;
     float lastX = stations[currentStation].x;
     float lastY = stations[currentStation].y;
@@ -296,13 +317,21 @@ void drawBus(unsigned int shader, unsigned int vao) {
         lastY = y;
     }
 
-    distanceTraveled += speed / 75.0f;
+    // Move bus only if not stopped
+    if (!busStopped) {
+        distanceTraveled += speed / 75.0f;
+    }
+
+    // If finished segment, move to next station
     if (distanceTraveled >= totalLength) {
         distanceTraveled = 0.0f;
         currentStation = nextStation;
         nextStation = (nextStation + 1) % 10;
+        busStopped = true;
+        stopStartTime = glfwGetTime();
     }
 
+    // Find bus position along the curve
     float traveled = 0.0f;
     float busX = stations[currentStation].x;
     float busY = stations[currentStation].y;
@@ -380,6 +409,14 @@ void drawBusPaths(unsigned int shader) {
     }
 }
 
+void drawDoors(unsigned int shader, unsigned int vao, bool busStopped) {
+    glUseProgram(shader);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, busStopped ? doorsOpenTex : doorsClosedTex);
+    glBindVertexArray(vao);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+}
+
 int main()
 {
     glfwInit();
@@ -404,9 +441,9 @@ int main()
 
     preprocessTexture(signatureTex, "../Resources/signature.png");
 
-    unsigned int signatureShader = createShader("../Shaders/signature.vert", "../Shaders/signature.frag");
-    glUseProgram(signatureShader);
-    glUniform1i(glGetUniformLocation(signatureShader, "signatureTex"), 0);
+    unsigned int simpleTextureShader = createShader("../Shaders/simple_texture.vert", "../Shaders/simple_texture.frag");
+    glUseProgram(simpleTextureShader);
+    glUniform1i(glGetUniformLocation(simpleTextureShader, "signatureTex"), 0);
 
     preprocessTexture(busTex, "../Resources/bus.png");
 
@@ -422,6 +459,9 @@ int main()
 
     unsigned int pathShader = createShader("../Shaders/path.vert", "../Shaders/path.frag");
     glUseProgram(pathShader);
+
+    preprocessTexture(doorsClosedTex, "../Resources/doors_closed.png");
+    preprocessTexture(doorsOpenTex, "../Resources/doors_open.png");
 
     float verticesSignature[] = {
         0.5f, -0.7f, 0.0f, 1.0f, // gornje levo teme
@@ -463,7 +503,19 @@ int main()
     unsigned int VAOstations;
     formVAOPositionOnly(verticesStation, sizeof(verticesStation), VAOstations);
 
+    float verticesDoors[] = {
+        -1.0f, -0.5f, 0.0f, 1.0f, // gornje levo teme
+        -1.0f, -1.0f, 0.0f, 0.0f, // donje levo teme
+        -0.65, -1.0f, 1.0f, 0.0f, // donje desno teme
+        -0.65f, -0.5f, 1.0f, 1.0f, // gornje desno teme
+   };
+
+    unsigned int VAOdoors;
+    formVAOTexture(verticesDoors, sizeof(verticesDoors), VAOdoors);
+
     glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
+
+    bool busStopped = false;
 
     while (!glfwWindowShouldClose(window))
     {
@@ -474,10 +526,11 @@ int main()
 
         glClear(GL_COLOR_BUFFER_BIT);
 
-        drawSignature(signatureShader, VAOsignature);
+        drawSignature(simpleTextureShader, VAOsignature);
         drawStations(stationShader, VAOstations, mode);
         drawBusPaths(pathShader);
-        drawBus(busShader, VAOBus);
+        drawBus(busShader, VAOBus, busStopped);
+        drawDoors(simpleTextureShader, VAOdoors, busStopped);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
