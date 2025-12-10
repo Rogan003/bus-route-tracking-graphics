@@ -10,6 +10,7 @@ set(CMAKE_LIBRARY_PATH "/opt/homebrew/lib")
 find_package(glfw3 REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(OpenGL REQUIRED)
+find_package(Freetype REQUIRED)
 
 add_executable(Projekat2D
         Source/Main.cpp
@@ -18,6 +19,7 @@ add_executable(Projekat2D
 
 target_include_directories(Projekat2D PRIVATE
         /opt/homebrew/include
+        ${FREETYPE_INCLUDE_DIRS}
 )
 
 target_link_directories(Projekat2D PRIVATE
@@ -28,4 +30,5 @@ target_link_libraries(Projekat2D
         glfw
         GLEW::GLEW
         OpenGL::GL
+        ${FREETYPE_LIBRARIES}
 )

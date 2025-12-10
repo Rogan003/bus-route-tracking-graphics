@@ -3,6 +3,8 @@
 
 #include "../Header/Util.h"
 
+#define NUM_SLICES 40
+
 // Main fajl funkcija sa osnovnim komponentama OpenGL programa
 
 // Projekat je dozvoljeno pisati počevši od ovog kostura
@@ -29,7 +31,7 @@ void preprocessTexture(unsigned& texture, const char* filepath) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 }
 
-void formVAO(float* vertices, size_t size, unsigned int& vao) {
+void formVAOTexture(float* vertices, size_t size, unsigned int& vao) {
     // formiranje VAO-ova je izdvojeno u posebnu funkciju radi čitljivijeg koda u main funkciji
 
     // Podsetnik za atribute:
@@ -66,9 +68,22 @@ void formVAO(float* vertices, size_t size, unsigned int& vao) {
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
-    // Atribut 1 (boja):
+    // Atribut 1 (tekstura):
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
+}
+
+void formVAOPositionOnly(float* vertices, size_t size, unsigned int& vao) {
+    glGenVertexArrays(1, &vao);
+    glGenBuffers(1, &VBOsignature);
+
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, VBOsignature);
+    glBufferData(GL_ARRAY_BUFFER, size, vertices, GL_STATIC_DRAW);
+
+    // Atribut 0 (pozicija):
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
 }
 
 void drawSignature(unsigned int shader, unsigned int vao) {
@@ -77,6 +92,40 @@ void drawSignature(unsigned int shader, unsigned int vao) {
     glBindTexture(GL_TEXTURE_2D, signatureTex);
     glBindVertexArray(vao);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+}
+
+struct Station {
+    float x, y;
+    int number;
+};
+
+Station stations[10];
+
+void initializeStations() {
+    stations[0].x = -0.4f; stations[0].y = 0.6f; stations[0].number = 0;
+    stations[1].x = 0.15f; stations[1].y = 0.55f; stations[1].number = 1;
+    stations[2].x = 0.5f; stations[2].y = 0.65f; stations[2].number = 2;
+    stations[3].x = 0.55f; stations[3].y = 0.3f; stations[3].number = 3;
+    stations[4].x = 0.65f; stations[4].y = -0.35f; stations[4].number = 4;
+    stations[5].x = 0.1f; stations[5].y = -0.5f; stations[5].number = 5;
+    stations[6].x = -0.15f; stations[6].y = -0.65f; stations[6].number = 6;
+    stations[7].x = -0.4f; stations[7].y = -0.1f; stations[7].number = 7;
+    stations[8].x = -0.75f; stations[8].y = 0.15f; stations[8].number = 8;
+    stations[9].x = -0.45f; stations[9].y = 0.25f; stations[9].number = 9;
+}
+
+unsigned stationNumberTextures[10];
+
+void drawStations(unsigned int shader, unsigned int vao) {
+    glUseProgram(shader);
+
+    GLint loc = glGetUniformLocation(shader, "uOffset");
+
+    for (int i = 0; i < 10; i++) {
+        glUniform2f(loc, stations[i].x, stations[i].y);
+        glBindVertexArray(vao);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, NUM_SLICES + 2);
+    }
 }
 
 int main()
@@ -107,6 +156,9 @@ int main()
     glUseProgram(signatureShader);
     glUniform1i(glGetUniformLocation(signatureShader, "signatureTex"), 0);
 
+    unsigned int stationShader = createShader("../Shaders/station.vert", "../Shaders/station.frag");
+    glUseProgram(stationShader);
+
     float verticesSignature[] = {
         0.5f, -0.7f, 0.0f, 1.0f, // gornje levo teme
         0.5f, -1.0f, 0.0f, 0.0f, // donje levo teme
@@ -115,7 +167,27 @@ int main()
    };
 
     unsigned int VAOsignature;
-    formVAO(verticesSignature, sizeof(verticesSignature), VAOsignature);
+    formVAOTexture(verticesSignature, sizeof(verticesSignature), VAOsignature);
+
+    initializeStations();
+    float verticesStation[(NUM_SLICES + 2) * 2];
+
+    float xc = 0.0f, yc = 0.0f, r = 0.12f;
+    float aspect = (float)mode->width / (float)mode->height;
+
+    verticesStation[0] = xc;
+    verticesStation[1] = yc;
+
+    for (int i = 1; i < NUM_SLICES + 2; ++i) {
+        float angle = i * 2 * M_PI / NUM_SLICES;
+        float x = cos(angle) * r / aspect + xc; // divide x by aspect
+        float y = sin(angle) * r + yc;
+        verticesStation[i * 2 + 0] = x;
+        verticesStation[i * 2 + 1] = y;
+    }
+
+    unsigned int VAOstations;
+    formVAOPositionOnly(verticesStation, sizeof(verticesStation), VAOstations);
 
     glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
 
@@ -129,6 +201,7 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT);
 
         drawSignature(signatureShader, VAOsignature);
+        drawStations(stationShader, VAOstations);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
