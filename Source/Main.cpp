@@ -27,6 +27,7 @@ unsigned signatureTex;
 unsigned busTex;
 unsigned doorsOpenTex;
 unsigned doorsClosedTex;
+unsigned controlTex;
 
 unsigned int VBO;
 
@@ -264,8 +265,10 @@ void drawStations(unsigned int shader, unsigned int vao, const GLFWvidmode* mode
 
 bool busStopped = false;
 int numberOfPassengers = 0;
+bool isControlInside = false;
+int numberOfTickets = 0;
 
-void drawBus(unsigned int shader, unsigned int vao, bool &busStopped) {
+void drawBus(unsigned int shader, unsigned int vao) {
     static int currentStation = 0;
     static int nextStation = 1;
     static float distanceTraveled = 0.0f;
@@ -406,7 +409,7 @@ void drawBusPaths(unsigned int shader) {
     }
 }
 
-void drawDoors(unsigned int shader, unsigned int vao, bool busStopped) {
+void drawDoors(unsigned int shader, unsigned int vao) {
     glUseProgram(shader);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, busStopped ? doorsOpenTex : doorsClosedTex);
@@ -414,22 +417,35 @@ void drawDoors(unsigned int shader, unsigned int vao, bool busStopped) {
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 
-void drawPassengerCount(int passengers, const GLFWvidmode* mode) {
-    char text[64];
-    snprintf(text, sizeof(text), "Number of passengers inside: %d", passengers);
+void drawTextInTopRight(const GLFWvidmode* mode) {
+    char passengerText[64];
+    snprintf(passengerText, sizeof(passengerText), "Number of passengers inside: %d", numberOfPassengers);
+    char ticketsText[64];
+    snprintf(ticketsText, sizeof(ticketsText), "Number of tickets: %d", numberOfTickets);
 
     float scale = 1.0f;
 
     float textWidth = 0.0f;
-    for (char c : std::string(text)) {
+    for (char c : std::string(passengerText)) {
         Character ch = Characters[c];
         textWidth += (ch.Advance >> 6) * scale / mode->width * 2.0f;
     }
 
     float x = 1.0f - 20.0f / mode->width * 2.0f - textWidth;
-    float y = 1.0f - 60.0f / mode->height * 2.0f;
+    float y = 1.0f - 40.0f / mode->height * 2.0f;
 
-    renderText(textShader, text, x, y, scale, 0.9f, 0.9f, 0.9f, mode->width, mode->height);
+    renderText(textShader, passengerText, x, y, scale, 0.9f, 0.9f, 0.9f, mode->width, mode->height);
+
+    textWidth = 0.0f;
+    for (char c : std::string(ticketsText)) {
+        Character ch = Characters[c];
+        textWidth += (ch.Advance >> 6) * scale / mode->width * 2.0f;
+    }
+
+    x = 1.0f - 20.0f / mode->width * 2.0f - textWidth;
+    y = 1.0f - 90.0f / mode->height * 2.0f;
+
+    renderText(textShader, ticketsText, x, y, scale, 0.9f, 0.9f, 0.9f, mode->width, mode->height);
 }
 
 void passengersEnterOrLeave(GLFWwindow* window, int button, int action, int mods) {
@@ -441,6 +457,18 @@ void passengersEnterOrLeave(GLFWwindow* window, int button, int action, int mods
     else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS && numberOfPassengers > 0) {
         numberOfPassengers--;
     }
+}
+
+void controlEntered() {
+
+}
+
+void drawControl(unsigned int shader, unsigned int vao) {
+    glUseProgram(shader);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, controlTex);
+    glBindVertexArray(vao);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 
 int main()
@@ -489,6 +517,7 @@ int main()
 
     preprocessTexture(doorsClosedTex, "../Resources/doors_closed.png");
     preprocessTexture(doorsOpenTex, "../Resources/doors_open.png");
+    preprocessTexture(controlTex, "../Resources/bus_control.png");
 
     float verticesSignature[] = {
         0.5f, -0.7f, 0.0f, 1.0f, // gornje levo teme
@@ -540,6 +569,16 @@ int main()
     unsigned int VAOdoors;
     formVAOTexture(verticesDoors, sizeof(verticesDoors), VAOdoors);
 
+    float verticesControl[] = {
+        -1.0f, 1.0f, 0.0f, 1.0f, // gornje levo teme
+        -1.0f, 0.65f, 0.0f, 0.0f, // donje levo teme
+        -0.75f, 0.65f, 1.0f, 0.0f, // donje desno teme
+        -0.75f, 1.0f, 1.0f, 1.0f, // gornje desno teme
+   };
+
+    unsigned int VAOControl;
+    formVAOTexture(verticesControl, sizeof(verticesControl), VAOControl);
+
     glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
 
     while (!glfwWindowShouldClose(window))
@@ -554,9 +593,13 @@ int main()
         drawSignature(simpleTextureShader, VAOsignature);
         drawStations(stationShader, VAOstations, mode);
         drawBusPaths(pathShader);
-        drawBus(busShader, VAOBus, busStopped);
-        drawDoors(simpleTextureShader, VAOdoors, busStopped);
-        drawPassengerCount(numberOfPassengers, mode);
+        drawBus(busShader, VAOBus);
+        drawDoors(simpleTextureShader, VAOdoors);
+        drawTextInTopRight(mode);
+
+        if (controlEntered) {
+            drawControl(simpleTextureShader, VAOControl);
+        }
 
         glfwSwapBuffers(window);
         glfwPollEvents();
