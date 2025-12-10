@@ -262,6 +262,9 @@ void drawStations(unsigned int shader, unsigned int vao, const GLFWvidmode* mode
     }
 }
 
+bool busStopped = false;
+int numberOfPassengers = 0;
+
 void drawBus(unsigned int shader, unsigned int vao, bool &busStopped) {
     static int currentStation = 0;
     static int nextStation = 1;
@@ -429,6 +432,17 @@ void drawPassengerCount(int passengers, const GLFWvidmode* mode) {
     renderText(textShader, text, x, y, scale, 0.9f, 0.9f, 0.9f, mode->width, mode->height);
 }
 
+void passengersEnterOrLeave(GLFWwindow* window, int button, int action, int mods) {
+    if (!busStopped) return;
+
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && numberOfPassengers < 50) {
+        numberOfPassengers++;
+    }
+    else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS && numberOfPassengers > 0) {
+        numberOfPassengers--;
+    }
+}
+
 int main()
 {
     glfwInit();
@@ -443,6 +457,7 @@ int main()
     GLFWwindow* window = glfwCreateWindow(mode->width, mode->height, "Bus Route Tracker", monitor, NULL);
     if (window == NULL) return endProgram("Prozor nije uspeo da se kreira.");
     glfwMakeContextCurrent(window);
+    glfwSetMouseButtonCallback(window, passengersEnterOrLeave);
 
     glfwSetCursor(window, loadImageToCursor("../Resources/bus_stop.png"));
 
@@ -526,9 +541,6 @@ int main()
     formVAOTexture(verticesDoors, sizeof(verticesDoors), VAOdoors);
 
     glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
-
-    bool busStopped = false;
-    int numberOfPassengers = 0;
 
     while (!glfwWindowShouldClose(window))
     {
